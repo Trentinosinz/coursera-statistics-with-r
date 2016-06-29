@@ -1,0 +1,303 @@
+---
+title: "Exploring the BRFSS data"
+output: 
+  html_document: 
+    fig_height: 4
+    highlight: pygments
+    theme: spacelab
+---
+
+## Setup
+
+### Load packages
+
+```{r load-packages, message = FALSE}
+library(ggplot2)
+library(dplyr)
+```
+
+### Load data
+
+```{r load-data}
+load("brfss2013.RData")
+```
+
+* * *
+
+## Part 1: Data
+
+The Behavioral Risk Factor Surveillance System (BRFSS) is the nation's premier system of health-related telephone surveys that collect state data about U.S. residents regarding their health-related risk behaviors, chronic health conditions, and use of preventive services. Established in 1984 with 15 states.
+
+Since 2011, BRFSS conducts both landline telephone- and cellular telephone-based surveys. In conducting the BRFSS landline telephone survey, interviewers collect data from a randomly selected adult in a household. In conducting the cellular telephone version of the BRFSS questionnaire, interviewers collect data from an adult who participates by using a cellular telephone and resides in a private residence or college housing[^1].
+
+### Scope of Inference
+
+The observations in BRFSS sample are collected by stratified random sampling (with the exception of Guam and Puerto Rico, who used random sampling), using Random Digit Dialing (RDD) techniques on both landlines and cell phones[^2]. Therefore, we can conclude that the study's results are generalizable to the population at large. However, there is a high likelihood of sampling bias that may impact the generalizability of the study:
+
+* Non-response bias: The survey results are limited to those who answer the the questionnaire, of which the core portion lasts an average of 18 minutes. While calls were made over 7 days a week during daytime and evening hours, this may have elicited a non-response bias from those who did not answer the call or who did not have time required to fully answer the questionnaire, e.g., working professionals.
+
+* Voluntary response bias: There may be a voluntary response bias from those who have health issues or feel strongly about the state of healthcare in the United States.
+
+* Population bias: 2.5% of households do not have access to landline or cellular telephone service - these households are not represented in the sample and therefore the study cannot be genereralized to include these households.
+
+The BRFSS is an observational study, and hence we can only establish association or correlation, but not causation. Random assignment was not employed as this survey was not conducted in an experimental setting.
+
+Therefore, the results of the study are generalizable to the population (taking into account sampling bias as described above), but causal conclusions cannot be derived.
+
+[^1]: BRFSS web site: http://www.cdc.gov/brfss/
+[^2]: BRFSS 2013 Overview: http://www.cdc.gov/brfss/annual_data/2013/pdf/overview_2013.pdf
+
+* * *
+
+## Part 2: Research questions
+
+**Research question 1:**
+
+For individuals that have low mental health (defined as having at least 1 day of low mental health in the past 30 days), is the prevalence of seeking medicine or treatment from a professional associated with preferred race?
+
+The purpose of this question is to evaluate whether the data supports the anecdotal evidence of stigma against mental health treatment in certain cultures, for those who have mental health issues. As income may be a confounding variable in addressing this question, we will also attempt to stratify by income.
+
+Variables:
+
+* menthlth: Number of Days Mental Health Not Good
+* mistmnt: Receiving Medicine Or Treatment From Health Pro For Emotional Problem
+* X_prace1: Computed Preferred Race
+* X_incomg: Computed Income Categories
+
+Computed Variables:
+        
+* menthind: Mental Health Indicator 
+
+**Research question 2:**
+
+Is receiving treatment from a health professional for an emotional problem associated with the perception that mental health treatment is effective?
+
+The purpose of this question is to evaluate whether receiving mental health treatment is correlated with the perception that treatment can help with a normal life. 
+
+Variables:
+
+* mistmnt: Receiving Medicine Or Treatment From Health Pro For Emotional Problem
+* mistrhlp: Mental Health Treatment Can Help People Lead Normal Life
+
+**Research question 3:**
+
+Is a history of a chronic health condition (excluding Depressive Disorder) associated with at least 1 day of low mental health in the past 30 days?
+
+The purpose of this question is to evaluate whether a history of a chronic health condition has an impact on mental health (as evaluated at the time of the study).
+
+Variables: 
+
+* cvdinfr4: Ever Diagnosed With Heart Attack
+* cvdcrhd4: Ever Diagnosed With Angina Or Coronary Heart Disease
+* cvdstrk3: Ever Diagnosed With A Stroke
+* asthma3: Ever Told Had Asthma
+* chcscncr: (Ever Told) You Had Skin Cancer?
+* chcocncr: (Ever Told) You Had Any Other Types Of Cancer?
+* chccopd1: (Ever Told) You Have (Copd) Chronic Obstructive Pulmonary Disease, Emphysema Or
+* havarth3: Told Have Arthritis
+* chckidny: (Ever Told) You Have Kidney Disease?
+* diabete3: (Ever Told) You Have Diabetes
+* menthlth: Number of Days Mental Health Not Good
+
+Computed Variables:
+
+* chronhist: Chronic Health History 
+* menthind: Mental Health Indicator 
+
+* * *
+
+## Part 3: Exploratory data analysis
+
+**Research question 1:**
+
+For individuals that have low mental health (defined as having at least 1 day of low mental health in the past 30 days), is the prevalence of seeking medicine or treatment from a professional associated with preferred race?
+
+First, the BRFSS dataset is manipulated to obtain the relevant variables:
+```{r}
+brfss_rq1 <- brfss2013 %>%
+        # Select the variables that we are interested in evaluating
+        select(menthlth, mistmnt, X_prace1, X_incomg) %>%
+        # Rename variables to be easier to work with
+        rename(race = X_prace1, income = X_incomg) %>%
+        # Omit NAs for any of the variables such that only complete cases are present
+        na.omit() %>%
+        # Create a "Mental Health Indicator" variable (menthind)
+        mutate(menthind = menthlth >= 1) %>%
+        # Filter for records where the Mental Health Indicator is TRUE
+        # Omit the "Other race" and "No preferred race" race categories
+        filter(menthind == TRUE, race != "Other race", race != "No preferred race") %>%
+        # Trim race string for cleaner visualization
+        mutate(race = strtrim(race, 15))
+```
+
+***Results by Race Only***
+
+Summarizing the numerical results in a table and stacked bar plot, we see that there is a noticeable difference between the percentages of respondents that seek mental health treatment by race. In particular, those of Asian or Native Hawaiian or Pacific Islander preferred race have lower rates of mental health treatment than that of American Indian or Native American, Black or African American, or White preferred race respondents.
+
+```{r}
+brfss_rq1$race <- as.factor(brfss_rq1$race)
+brfss_rq1$income <- as.factor(brfss_rq1$income)
+
+brfss_rq1_table <- brfss_rq1 %>%
+        group_by(race) %>%
+        summarize(percentage_seek_treatment = sum(mistmnt == "Yes")/n()*100)
+
+brfss_rq1_table
+```
+
+```{r}
+ggplot(brfss_rq1, aes(x = race, fill = mistmnt)) + 
+        geom_bar(position = "fill") +
+        scale_y_continuous(label = scales::percent) + 
+        theme(axis.text.x = element_text(angle=90)) + 
+        labs(title = "Race and Seeking Mental Health Treatment", x = "Race", 
+             y = "Percentage", fill = "Treatment")
+```
+
+
+***Results by Race and Income***
+
+Summarizing the numerical results in a table and stacked bar plot with facets, we see that income does appear to have an affect on the percentages. While the "Less than $15,000" group appears to have similar percentages to the whole, there is a lower number of respondents in each category so it is difficult to make any associative conclusions without a larger sample size. 
+
+Based on these results, it does appear that race is still correlated with seeking mental health treatment after adjusting for income. Across all of the income categories, those of Asian or Native Hawaiian or Pacific Islander preferred race still have lower rates of mental health treatment than that of American Indian or Native American, Black or African American, or White preferred race respondents across all of the income categories.
+
+
+```{r}
+brfss_rq1_table2<- brfss_rq1 %>%
+        group_by(race, income) %>%
+        summarize(percentage_seek_treatment = sum(mistmnt == "Yes")/n()*100)
+
+brfss_rq1_table2
+```
+
+```{r}
+ggplot(brfss_rq1, aes(x = race, fill = mistmnt)) + 
+        geom_bar(position = "fill") +
+        scale_y_continuous(label = scales::percent) + 
+        theme(axis.text.x = element_text(angle=90)) + 
+        labs(title = "Race and Seeking Mental Health Treatment, 
+             Adjusting for Income", 
+             x = "Race", 
+             y = "Percentage", 
+             fill = "Treatment") +
+        facet_wrap(~ income, ncol = 2)
+```
+
+**Research question 2:**
+Is receiving treatment from a health professional for an emotional problem associated with the perception that mental health treatment is effective?
+
+First, the BRFSS dataset is manipulated to obtain the relevant variables:
+```{r}
+brfss_rq2 <- brfss2013 %>%
+        # Select the variables that we are interested in evaluating
+        select(mistmnt, mistrhlp) %>%
+        # Omit NAs for any of the variables such that only complete cases are present
+        na.omit()
+```
+
+***Results***
+
+Based on these results, 93% of the sample "Agree strongly" or "Agree slightly" with the perception that mental health treatment can help with a normal life. Of those who have received mental health treatment, 94.6% "Agree strongly" or "Agree slightly" with the perception that mental health treatment can help with a normal life, compared to 92.7% of those who have not received mental health treatment. Therefore, it seems likely that mental health treatment is associated with the perception that treatment can help with a normal life.
+
+Proportion of the sample that "Agree strongly" or "Agree slightly" with the perception that mental health treatment can help with a normal life:    
+```{r}
+sum(brfss_rq2$mistrhlp == "Agree strongly" | brfss_rq2$mistrhlp == "Agree slightly") / nrow(brfss_rq2)
+```
+
+Proportion of the sample that "Agree strongly" or "Agree slightly" with the perception that mental health treatment can help with a normal life, given that they have received mental health treatment:
+```{r}
+sum((brfss_rq2$mistrhlp == "Agree strongly" | brfss_rq2$mistrhlp == "Agree slightly") & brfss_rq2$mistmnt == "Yes")/ sum(brfss_rq2$mistmnt == "Yes")
+```
+
+Proportion of the sample that "Agree strongly" or "Agree slightly" with the perception that mental health treatment can help with a normal life, given that they have not received mental health treatment:
+```{r}
+sum((brfss_rq2$mistrhlp == "Agree strongly" | brfss_rq2$mistrhlp == "Agree slightly") & brfss_rq2$mistmnt == "No")/ sum(brfss_rq2$mistmnt == "No")
+```
+
+The difference is more pronounced when we just look at the proportion of the sample that only "Agree strongly" with the statement across both groups.
+
+```{r}
+sum(brfss_rq2$mistrhlp == "Agree strongly") / nrow(brfss_rq2)
+```
+
+```{r}
+sum(brfss_rq2$mistrhlp == "Agree strongly" & brfss_rq2$mistmnt == "Yes")/ sum(brfss_rq2$mistmnt == "Yes")
+```
+
+```{r}
+sum(brfss_rq2$mistrhlp == "Agree strongly" & brfss_rq2$mistmnt == "No")/ sum(brfss_rq2$mistmnt == "No")
+```
+
+
+```{r}
+ggplot(brfss_rq2, aes(x = mistmnt, fill = mistrhlp)) + 
+        geom_bar(position = "fill") + 
+        scale_y_continuous(label = scales::percent) + 
+        labs(title = "Mental Health Treatment and Perception of Effectiveness",
+             x = "Mental Health Treatment", 
+             y = "Percentage", 
+             fill = "Perception that Treatment\nCan Help with a Normal Life")
+```
+
+```{r}
+table(brfss_rq2$mistrhlp)
+table(brfss_rq2$mistrhlp, brfss_rq2$mistmnt)
+```
+**Research question 3:**
+Is a history of a chronic health condition (excluding Depressive Disorder) associated with at least 1 day of low mental health in the past 30 days?
+
+First, the BRFSS dataset is manipulated to obtain the relevant variables:
+```{r}
+brfss_rq3 <- brfss2013 %>%
+        # Select the variables that we are interested in evaluating
+        select(cvdinfr4, cvdcrhd4, cvdstrk3, asthma3, chcscncr, chcocncr, chccopd1, havarth3, chckidny, diabete3, menthlth) %>%
+        # Omit NAs for any of the variables such that only complete cases are present
+        na.omit()
+
+# Convert factor variables to numeric variables
+cols <- names(brfss_rq3[1:10])
+brfss_rq3[,cols] <- as.numeric(unlist(brfss_rq3[,cols]))
+
+brfss_rq3 <- brfss_rq3 %>%
+        # Create a "Chronic Health History" variable (chronhist)
+        # Create a "Mental Health Indicator" variable (menthind)
+        mutate(chronhist = ifelse(cvdinfr4 == 1 | cvdcrhd4 == 1| cvdstrk3 == 1 | asthma3 == 1 | chcscncr == 1 | chcocncr == 1 | chccopd1 == 1 | havarth3 == 1 | chckidny == 1 | diabete3 == 1, TRUE, FALSE), menthind = menthlth >= 1) 
+
+```
+
+***Results***
+
+As we can see the conditional probability calculation and bar graph below, the probability of having at least 1 day of low mental health given a history of a chronic health condition is different from the marginal probability of having at least 1 day of low mental health: 33.0% vs. 30.5%. Therefore, we can conclude that having at least 1 day of low mental health and having a history of a chronic health condition may be dependent.
+
+Probability of having a history of a chronic health condition:
+```{r}
+sum(brfss_rq3$chronhist == 1)/nrow(brfss_rq3)
+```
+
+Probability of having at least 1 day of low mental health:
+```{r}
+sum(brfss_rq3$menthind == 1)/nrow(brfss_rq3)
+```
+
+Probability of having at least 1 day of low mental health given a history of a chronic health condition:
+```{r}
+sum(brfss_rq3$chronhist == 1 & brfss_rq3$menthind == 1)/sum(brfss_rq3$chronhist == 1)
+```
+
+```{r}
+ggplot(brfss_rq3, aes(x = chronhist, fill = menthind)) + 
+        geom_bar(position = "fill") +
+        scale_y_continuous(label = scales::percent) + 
+        theme(axis.text.x = element_text(angle=90)) + 
+        labs(title = "Chronic Health Condition and Impact on Mental Health", 
+             x = "Chronic Health Condition", 
+             y = "Percentage", 
+             fill = "At Least 1 Day of\nLow Mental Health")
+```
+
+**Comments**
+
+As these research questions primarily addressed categorical variables, bar plots were used to visualize the data.
+
+To further evaluate these research questions, we would construct null and alternative hypotheses and perform statistical inference on the results. However, this is outside the scope of the assignment.
+
